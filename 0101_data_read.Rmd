@@ -1,0 +1,75 @@
+---
+title: "0101_data_read"
+author: "Christine Buje Hostrup Thier"
+date: "2023-01-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(readr)
+library(dplyr)
+```
+
+## Read data 
+### Ejerlejlighed
+```{r}
+data_101_2018 <- read.csv("/Users/christinethier/Desktop/CBS Cand.Merc.(Mat.)/Speciale/XGBoost - R/CSV-filer/101-2018_ejerligelighed.csv",header = TRUE)
+data_101_2019 <- read.csv("/Users/christinethier/Desktop/CBS Cand.Merc.(Mat.)/Speciale/XGBoost - R/CSV-filer/101-2019_ejerligelighed.csv",header = TRUE)
+data_101_2020 <- read.csv("/Users/christinethier/Desktop/CBS Cand.Merc.(Mat.)/Speciale/XGBoost - R/CSV-filer/101-2020_ejerligelighed.csv",header = TRUE)
+data_101_2021 <- read.csv("/Users/christinethier/Desktop/CBS Cand.Merc.(Mat.)/Speciale/XGBoost - R/CSV-filer/101-2021_ejerligelighed.csv",header = TRUE)
+data_101_2022 <- read.csv("/Users/christinethier/Desktop/CBS Cand.Merc.(Mat.)/Speciale/XGBoost - R/CSV-filer/101-2022_ejerligelighed.csv",header = TRUE)
+data_147 <- read.csv("/Users/christinethier/Desktop/CBS Cand.Merc.(Mat.)/Speciale/XGBoost - R/CSV-filer/147-2018-2022_ejerligelighed.csv",header = TRUE)
+
+data_ejerlejligheder <- data_101_2018 %>% 
+  bind_rows(data_101_2019,
+            data_101_2020,
+            data_101_2021,
+            data_101_2022,
+            data_147) %>% 
+  mutate(bolig = "Ejerlejlighed")
+```
+### Villa
+```{r}
+data_101 <- read.csv("/Users/christinethier/Desktop/CBS Cand.Merc.(Mat.)/Speciale/XGBoost - R/CSV-filer/101-2018-2022_villa.csv",header = TRUE)
+data_147 <- read.csv("/Users/christinethier/Desktop/CBS Cand.Merc.(Mat.)/Speciale/XGBoost - R/CSV-filer/147-2018-2022_villa.csv",header = TRUE)
+
+data_villa <- data_101 %>% 
+  bind_rows(data_147) %>% 
+  mutate(bolig = "Villa")
+```
+### Rækkehus
+```{r}
+data_101 <- read.csv("/Users/christinethier/Desktop/CBS Cand.Merc.(Mat.)/Speciale/XGBoost - R/CSV-filer/101-2018-2022_raekkehus.csv",header = TRUE)
+data_147 <- read.csv("/Users/christinethier/Desktop/CBS Cand.Merc.(Mat.)/Speciale/XGBoost - R/CSV-filer/147-2018-2022_raekkehus.csv",header = TRUE)
+
+data_raekkehus <- data_101 %>% 
+  bind_rows(data_147) %>% 
+  mutate(bolig = "Raekkehus")
+```
+
+### Rækkehus
+```{r}
+data_storkøbenhavn <- read.csv("/Users/christinethier/Desktop/CBS Cand.Merc.(Mat.)/Speciale/XGBoost - R/CSV-filer/2018-2022_Storkobenhavn.csv",header = TRUE)
+
+boliger_raekkehus <- boliger_raekkehus %>%  
+  mutate(bolig = "Raekkehus")
+```
+
+## Merge data
+```{r}
+#gathered_data <-data
+data_storkøbenhavn <- boliger_ejerlejlighed %>% 
+  bind_rows(boliger_villa,
+            boliger_raekkehus)
+```
+
+## Save data
+```{r}
+write.csv(data_storkøbenhavn, "/Users/christinethier/Desktop/CBS Cand.Merc.(Mat.)/Speciale/XGBoost - R/database/0101_data_read_new.csv", row.names=FALSE)
+```
+

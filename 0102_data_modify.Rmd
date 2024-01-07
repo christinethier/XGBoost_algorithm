@@ -1,0 +1,82 @@
+---
+title: "0102_data_modify"
+author: "Christine Buje Hostrup Thier"
+date: "2023-01-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## packages
+```{r}
+library(tidyverse)
+library(dplyr)
+library(stringr)
+```
+
+
+## Read data
+```{r}
+data <- read.csv("/Users/christinethier/Desktop/CBS Cand.Merc.(Mat.)/Speciale/XGBoost - R/database/0101_data_read_new.csv",header = TRUE)
+```
+
+## Modify data
+```{r}
+modify_function <- function(x){
+  x <- x %>% 
+    mutate(kommune =str_remove(adresse, ".*\\d+\\s+"),
+           kommunenr = str_extract(str_extract(bolig_link, "^.{14}"),".{3}$"),
+           temp = gsub(".*\\,", "", adresse),
+           adresse_2 = gsub("\\,.*", "", adresse)) %>% 
+    mutate(adresse_2 = ifelse(str_length(adresse)==str_length(adresse_2),
+                              ifelse(grepl("København|Albertslund|Klampenborg",kommune),gsub(".{18}$", "", adresse_2),
+                                     ifelse(grepl("Vanløse|Rødovre|Kastrup|Værløse|Brøndby",kommune),gsub(".{14}$","",adresse_2),
+                                            ifelse(grepl("Brønshøj|Hellerup|Nordhavn|Ballerup|Gentofte|Bagsværd|Glostrup|Hvidovre|Tasstrup|Roskilde",kommune),gsub(".{15}$", "",adresse_2),
+                                                   ifelse(grepl("Frederiksberg C|Charlottenlund|Kongens Lyngby",kommune),gsub(".{21}$","",adresse_2),
+                                                          ifelse(kommune=="Frederiksberg ",gsub(".{19}$","",adresse_2),
+                                                                 ifelse(kommune=="Valby ",gsub(".{11}$","",adresse_2), 
+                                                                        ifelse(grepl("Søborg|Herlev|Dragør",kommune),gsub(".{12}$","",adresse_2),
+                                                                               ifelse(grepl("Måløv|Ishøj|Virum",kommune),gsub(".{11}$","",adresse_2),
+                                                                                      ifelse(grepl("Skovlunde",kommune),gsub(".{16}$","",adresse_2),
+                                                                                             ifelse(grepl("Dyssegård|Hedehusene|Vallensbæk",kommune),gsub(".{17}$","",adresse_2),
+                                                                                                    ifelse(grepl("Vallensbæk Strand",kommune),gsub(".{24}$","",adresse_2),
+                                                                                                           ifelse(kommune=="Brøndby Strand",gsub(".{7}$","",adresse_2),adresse_2)))))))))))), adresse_2),
+           etagenr = str_extract(temp,"^.{3}"),
+           etagenr = str_replace_all(etagenr, " ", ""),
+           etagenr = str_replace_all(etagenr, "\\.", ""),
+           etagenr = as.numeric(ifelse(etagenr == "st", "0", ifelse(bolig == "Villa", "0", etagenr))),
+           etagenr = as.numeric(ifelse(is.na(etagenr)& bolig=="Raekkehus", "0", etagenr)),
+           postnr = gsub("[a-ø]", "", temp),
+           postnr = gsub("[A-Å]", "", postnr),
+           temp2 = str_replace_all(postnr, " ", ""),
+           postnr = str_extract(temp2, ".{4}$")
+           )  %>% 
+    select(-c(temp, temp2)) #%>% 
+    #filter(!is.na(etagenr))
+  
+  x <- x %>% 
+    mutate(year = as.numeric(str_extract(salgsdato, "^.{4}")),
+           month = as.numeric(str_extract(str_extract(salgsdato, "^.{7}"), ".{2}$")),
+           day = as.numeric(str_extract(salgsdato, ".{2}$")),
+           quarter = ifelse(month >=10, "q4", ifelse(month>=7, "q3", ifelse(month >=4,"q2","q1"))),
+           year_quarter=paste0(year,quarter),
+           adresse_3=paste0(adresse_2, ", ",postnr)) %>% 
+  select(-c(bolig_link))
+  
+  x <- x[!duplicated(x), ]
+  
+  return(x)
+}
+```
+
+```{r}
+mod_data <- modify_function(data)
+```
+
+## Save Data
+```{r}
+write.csv(mod_data, "/Users/christinethier/Desktop/CBS Cand.Merc.(Mat.)/Speciale/XGBoost - R/database/0102_data_modify_new.csv", row.names=FALSE)
+```
+

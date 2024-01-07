@@ -1,0 +1,261 @@
+---
+title: "boliga webscrape test"
+author: "Christine Buje Hostrup Thier"
+date: "2023-01-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Read library
+```{r}
+library(devtools)
+library(remotes)
+library(dplyr)
+library(tidyr)
+library(stringr)
+```
+
+## Extract Table Function
+```{r}
+boliga_extract_table <- function(boliga_content){
+
+  # parse the text to html
+  # find the #searchresult nodes
+  # get the table rows and content
+  # I used selectorGadget to find the
+  # node "#searchresult"
+  bol_table <-
+    boliga_content %>%
+    xml2::read_html() %>%
+    rvest::html_nodes(".mb-3") %>%
+    rvest::html_nodes("tr") %>%
+    purrr::map(~rvest::html_nodes(.x, "td"))
+
+  adresse <-
+    bol_table %>%
+    purrr::map(~.x %>% .[1] %>% rvest::html_node("a")) %>%
+    purrr::map(~as.character(.x)) %>%
+    purrr::map(~stringr::str_replace_all(.x, "<br>", ", ")) %>%
+    do.call(c, .) %>%
+    paste(., collapse = "\n") %>%
+    xml2::read_html(.) %>%
+    rvest::html_nodes("a") %>%
+    rvest::html_text()
+
+  pris <-
+    bol_table %>%
+    purrr::map(~.x %>% .[2] %>% rvest::html_nodes("span") %>% rvest::html_text() %>%
+                 stringr::str_replace_all(., "\\.", "") %>% stringr::str_replace_all(., "kr", "") %>%
+                 stringr::str_trim()) %>%
+    do.call(c, .) %>%
+    as.integer()
+
+  salgsdato <-
+    bol_table %>%
+    purrr::map(~.x %>% .[3] %>% rvest::html_nodes("span") %>% .[1] %>% rvest::html_text() %>% stringr::str_replace_all(., "\\.", "")) %>%
+    do.call(c, .) %>%
+    as.Date(dato, format = "%d-%m-%Y")
+
+  boligtype <-
+    bol_table %>%
+    purrr::map(~.x %>% .[3] %>% rvest::html_nodes("span") %>% .[2] %>% rvest::html_text() %>% stringr::str_replace_all(., "\\.", "")) %>%
+    do.call(c, .)
+
+  pris_kvm <-
+    bol_table %>%
+    purrr::map(~.x %>% .[4] %>% rvest::html_nodes("span") %>% .[2] %>% rvest::html_text() %>%
+                 stringr::str_replace_all(., "\\.", "") %>% stringr::str_replace_all(., "kr/m²", "") %>%
+                 stringr::str_trim()) %>%
+    do.call(c, .) %>%
+    as.integer()
+
+  vaerelser <-
+    bol_table %>%
+    purrr::map(~.x %>% .[5] %>% rvest::html_nodes("span") %>% .[1] %>% rvest::html_text() %>% stringr::str_trim()) %>%
+    do.call(c, .) %>%
+    as.integer()
+
+  m2 <-
+    bol_table %>%
+    purrr::map(~.x %>% .[4] %>% rvest::html_nodes("span") %>% .[1] %>% rvest::html_text() %>%
+                 stringr::str_replace_all(., "\\.", "") %>% stringr::str_replace_all(., "m²", "") %>%
+                 stringr::str_trim()) %>%
+    do.call(c, .) %>%
+    as.integer()
+
+  byggear <-
+    bol_table %>%
+    purrr::map(~.x %>% .[6] %>% rvest::html_nodes("span") %>% .[1] %>% rvest::html_text()) %>%
+    do.call(c, .)  %>%
+    as.integer()
+
+  bolig_link <-
+    bol_table %>%
+    purrr::map(~.x %>% .[1] %>% rvest::html_node("a")) %>%
+    purrr::map(., ~rvest::html_attrs(.)) %>%
+    unlist() %>%
+    unname()
+
+  bolig_link_selected <- bolig_link[seq(4, length(bolig_link), 4)]
+
+  res_df <- dplyr::bind_cols(tibble::tibble(adresse, pris, salgsdato, boligtype, pris_kvm, vaerelser, m2, byggear))
+  res_df$bolig_link <- bolig_link_selected
+
+  res_df
+}
+
+```
+
+## Get Table Function
+```{r}
+boliga_get_table <- function(url_address){
+
+  boliga_page <- httr::GET(url = url_address, 
+                           httr::user_agent("https://github.com/krose/mkonline"))
+  
+  if(httr::status_code(boliga_page) != 200){
+    httr::stop_for_status(boliga_page)
+  }
+  
+  boliga_page <- httr::content(x = boliga_page, as = "text")
+  
+  boliga_table <- boliga_extract_table(boliga_page)
+  
+  boliga_table
+}
+
+```
+
+
+## boliga_create_base_url
+```{r}
+boliga_create_base_url <- function(min_sale_date = NULL,
+                                   max_sale_date = Sys.Date(),
+                                   type = c("Alle", "Villa", "Rækkehus", "Ejerlejlighed", "Fritidshus", "Landejendom"),
+                                   postal_code = NULL){
+  #https://www.boliga.dk/salg/resultater?propertyType=3&searchTab=1&sort=date-d&zipcodeFrom=2000&zipcodeTo=2000&salesDateMin=2020&salesDateMax=2020  
+  #https://www.boliga.dk/salg/resultater?propertyType=3&searchTab=1&sort=date-d&zipcodeFrom=2000&zipcodeTo=2000&salesDateMin=2020&salesDateMax=2020&page=2
+  
+  base_url <- "https://www.boliga.dk/salg/resultater?propertyType=3&searchTab=1&sort=date-d"
+  
+  if(!is.null(postal_code)){
+    postal_code <- paste0("&municipality=", postal_code)
+    
+    base_url <- paste0(base_url, postal_code)
+  } else {
+    stop("post_no kan ikke være lig nul")
+  }
+  
+  if(!is.null(min_sale_date) | class(min_sale_date)[1] == "Date"){
+    min_sale_date <- paste0("&salesDateMin=", min_sale_date)
+    
+    base_url <- paste0(base_url, min_sale_date)
+  } else {
+    stop("min_sale_date er nødsaget til at være class 'Date'")
+  }
+  
+  if(!is.null(max_sale_date) | class(max_sale_date)[1] == "Date"){
+    max_sale_date <- paste0("&salesDateMax=", max_sale_date)
+    
+    base_url <- paste0(base_url, max_sale_date)
+  } else {
+    stop("max_sale_date er nødsaget til at være class 'Date'")
+  }
+  
+  base_url
+}
+
+```
+
+## Webscrape Boliga Function
+```{r}
+boliga_webscrape_sold <- function(min_sale_date, max_sale_date, type, postal_code, p){
+
+  base_url <- boliga_create_base_url(min_sale_date = min_sale_date, 
+                                        max_sale_date = max_sale_date, 
+                                        type = type, 
+                                        postal_code = postal_code)
+  
+  boliga_base <- httr::GET(url = base_url)
+  boliga_base_content <- httr::content(boliga_base, as = "text", encoding = "UTF-8")
+  
+  boliga_base_html <- xml2::read_html(boliga_base_content)
+  warning(paste0("test: ", base_url))
+  # Get the number of results
+  house_count <- 
+    boliga_base_html %>% 
+    rvest::html_node(".listings-found-text") %>% 
+    rvest::html_text() %>%
+    readr::parse_number() %>% 
+    as.integer()
+  
+  # Der er 50 resultater per page
+  if(is.na(house_count)){
+    return(NULL)
+  }
+  page_count <- house_count / 50
+  
+  if(as.integer(page_count) < page_count){
+    page_count <- p
+    
+  }
+  
+  # loop over antallet af sider med boliger til salg
+  # tilføjer resultaterne til result list
+  pb <- progress::progress_bar$new(total = page_count)
+  result_list <- vector("list", page_count)
+  for(page in 1:page_count){
+    
+    url_address <- glue::glue('{base_url}', '&page={page}')
+    result_list[[page]] <- boliga_get_table(url_address)
+    
+    Sys.sleep(time = rgamma(n = 1, shape = 3, scale = 0.3))
+    pb$tick()
+  }
+
+  boliga_table <- 
+    result_list %>%
+    dplyr::bind_rows()
+  
+  boliga_table
+}
+
+```
+
+## Get boliga data
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+min_date <- 2018
+max_date <- 2022
+pos_code <- 185
+
+boliger <- boliga_webscrape_sold(min_sale_date = min_date,
+                                 max_sale_date = max_date, 
+                                 type = "Ejerlejlighed",
+                                 postal_code = pos_code,
+                                 p=16)
+
+glimpse(boliger)
+
+```
+
+```{r}
+#boliger_ejerlejlighed <- boliger
+
+boliger_storkoebenhavn <- boliger_ejerlejlighed %>% 
+  bind_rows(boliger_villa, boliger_raekkehus)
+```
+
+
+## Gem data
+```{r}
+write.csv(boliger_storkoebenhavn, "/Users/christinethier/Desktop/CBS Cand.Merc.(Mat.)/Speciale/XGBoost - R/CSV-filer/2018-2022_Storkobenhavn.csv", row.names=FALSE)
+```
+
+
